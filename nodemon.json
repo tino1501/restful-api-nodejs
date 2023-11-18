@@ -1,0 +1,6 @@
+{
+    "env":{
+        "DATABASE_NAME":"shop-api",
+        "PORT":"8080"
+    }
+}
