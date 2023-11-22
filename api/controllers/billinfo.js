@@ -85,13 +85,12 @@ exports.create_billInfo = async (req, res, next) => {
     if (
         !req.body.billId ||
         !req.body.foodId ||
-        !req.body.quantity ||
-        !req.body.price
+        !req.body.quantity
     ) {
         return res.status(404).json({
             message: "Cannot create billinfo",
             status: "Failed",
-            error: "missing billId or foodId or quantity or price",
+            error: "missing billId or foodId or quantity",
             billInfo: {},
         });
     }
@@ -153,9 +152,6 @@ exports.create_billInfo = async (req, res, next) => {
                 billInfo: {},
             });
         } else {
-            bill.tips += result.price * result.quantity;
-            const resultSave = await bill.save();
-
             res.status(201).json({
                 message: "Create billinfo successfully",
                 status: "Success",

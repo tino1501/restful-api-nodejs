@@ -158,81 +158,93 @@ exports.get_billinfo = async (req, res, next) => {
     }
 };
 
-exports.get_bills_by_day = async (req, res, next) => {
-    console.log("get bill by day");
-    console.log(req.query);
-
+exports.get_billamount_by_month = async (req, res, next) => {
     if (!req.query.month || !req.query.year) {
         return res.status(400).json({
             message: "Cannot get bill",
             status: "Failed",
-            error: "Missing day or month or year",
+            error: "Missing month or year",
             count: 0,
             bills: [],
         });
     }
 
-    try {
-        const bills = await Bill.find()
-            .select(
-                "_id timeCheckIn timeCheckout note tips status table seller"
-            )
-            .populate("seller", "_id username first_name last_name")
-            .populate("table", "_id tablename status note")
-            .exec();
-        // res.status(200).json(bills);
+    const month = parseInt(req.query.month);
+    const year = parseInt(req.query.year);
 
-        if (!bills) {
-            res.status(500).json({
-                message: "Get list bill failed",
-                status: "Failed",
-                error: "Cannot get list bill",
-                count: 0,
-                bills: [],
-            });
-        } else {
-            let size = 0;
-            const response = {
-                message: "Get list bill successfully",
-                status: "Success",
-                error: "",
+    // Lấy ngày đầu tiên và cuối cùng của tháng
+    const firstDayOfMonth = new Date(year, month - 1, 1);
+    const lastDayOfMonth = new Date(year, month, 0);
 
-                bills: bills
-                    .map((bill) => {
-                        const checkInDate = new Date(Number(bill.timeCheckIn));
+    const listbill = await Bill.aggregate([
+        {
+            $match: {
+                timeCheckIn: {
+                    $gte: firstDayOfMonth.getTime(),
+                    $lt: lastDayOfMonth.getTime(),
+                },
+            },
+        },
+        {
+            $lookup: {
+                from: "billinfos",
+                localField: "_id",
+                foreignField: "bill",
+                as: "billInfo",
+            },
+        },
+        {
+            $unwind: "$billInfo",
+        },
+        {
+            $group: {
+                _id: {
+                    date: {
+                        $dateToString: {
+                            format: "%d",
+                            date: { $toDate: "$timeCheckIn" },
+                        },
+                    },
+                },
+                totalAmount: {
+                    $sum: {
+                        $add: [
+                            {
+                                $multiply: [
+                                    "$billInfo.quantity",
+                                    "$billInfo.price",
+                                ],
+                            },
+                            "$tips",
+                        ],
+                    },
+                },
+            },
+        },
+        {
+            $project: {
+                _id: 0,
+                date: "$_id.date",
+                totalAmount: 1,
+            },
+        },
+    ]);
 
-                        if (
-                            checkInDate.getMonth() + 1 != req.query.month || // month bat dau tu 0
-                            checkInDate.getFullYear() != req.query.year
-                        ) {
-                            return null;
-                        } else {
-                            size++;
-                            return {
-                                _id: bill._id,
-                                timeCheckIn: bill.timeCheckIn,
-                                timeCheckout: bill.timeCheckout,
-                                note: bill.note,
-                                tips: bill.tips,
-                                status: bill.status,
-                                table: bill.table,
-                                seller: bill.seller,
-                            };
-                        }
-                    })
-                    .filter((bill) => bill !== null),
-                count: size,
-            };
-
-            res.status(200).json(response);
-        }
-    } catch (err) {
-        return res.status(500).json({
-            message: "Get bills failed",
+    if (listbill) {
+        res.status(200).json({
+            message: "Get list bill successfully",
+            status: "Success",
+            error: "",
+            count: listbill.length,
+            billamounts: listbill,
+        });
+    } else {
+        res.status(500).json({
+            message: "Get list bill failed",
             status: "Failed",
-            error: err.message,
+            error: "Cannot get list bill",
             count: 0,
-            bills: [],
+            billamounts: [],
         });
     }
 };
@@ -268,20 +280,10 @@ exports.create_bill = async (req, res, next) => {
             });
         }
 
-        // table san sang de su dung
-
-        table = await Table.findOneAndUpdate(
-            // cap nhat trang thai table
-            { _id: req.body.table },
-            { $set: { status: 1 } },
-            { new: true }
-        ).exec();
-
         const bill = new Bill({
             _id: new mongoose.Types.ObjectId(),
             timeCheckIn: req.body.timeCheckIn,
             note: req.body.note,
-            tips: req.body.tips,
             table: req.body.table,
             seller: req.body.seller,
         });
@@ -289,6 +291,9 @@ exports.create_bill = async (req, res, next) => {
         const result = await bill.save(); // luu bill vao database
 
         if (!result) {
+            table.status = 0;
+            await table.save();
+
             res.status(500).json({
                 message: "Create bill failed",
                 status: "Failed",
@@ -296,31 +301,44 @@ exports.create_bill = async (req, res, next) => {
                 bill: {},
             });
         } else {
-            res.status(201).json({
-                message: "Create bill successfully",
-                status: "Success",
-                error: "",
-                bill: {
-                    _id: result._id,
-                    timeCheckIn: result.timeCheckIn,
-                    timeCheckout: result.timeCheckout,
-                    note: result.note,
-                    tips: result.tips,
-                    status: result.status,
-                    table: {
-                        _id: result.table._id,
-                        tablename: result.table.tablename,
-                        status: result.table.status,
-                        note: result.table.note,
+            // cap nhat trang thai table
+            table.status = 1;
+            const updatestatus = await table.save();
+
+            if (!updatestatus) {
+                return res.status(404).json({
+                    message: "Cannot update state table after create bill",
+                    status: "Failed",
+                    error: "Khong the cap nhat trang thai ban sau khi tao bill",
+                    bill: {},
+                });
+            } else {
+                res.status(201).json({
+                    message: "Create bill successfully",
+                    status: "Success",
+                    error: "",
+                    bill: {
+                        _id: result._id,
+                        timeCheckIn: result.timeCheckIn,
+                        timeCheckout: result.timeCheckout,
+                        note: result.note,
+                        tips: result.tips,
+                        status: result.status,
+                        table: {
+                            _id: result.table._id,
+                            tablename: result.table.tablename,
+                            status: result.table.status,
+                            note: result.table.note,
+                        },
+                        seller: {
+                            _id: result.seller._id,
+                            username: result.seller.username,
+                            first_name: result.seller.first_name,
+                            last_name: result.seller.last_name,
+                        },
                     },
-                    seller: {
-                        _id: result.seller._id,
-                        username: result.seller.username,
-                        first_name: result.seller.first_name,
-                        last_name: result.seller.last_name,
-                    },
-                },
-            });
+                });
+            }
         }
     } catch (err) {
         res.status(500).json({
