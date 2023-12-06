@@ -1,14 +1,10 @@
 const mongoose = require("mongoose");
 require("dotenv").config();
-const moment = require("moment");
 
+const normalize = require("../middlewares/normalize-string");
 const Bill = require("../models/bill");
 const Table = require("../models/table");
 const BillInfo = require("../models/billinfo");
-const MapLabel = require("../middlewares/map-label");
-
-const { parse } = require("url");
-const { parse: parseQueryString } = require("querystring");
 
 exports.get_all = async (req, res, next) => {
     try {
@@ -161,22 +157,22 @@ exports.get_billinfo = async (req, res, next) => {
 exports.get_billamount_by_month = async (req, res, next) => {
     if (!req.query.month || !req.query.year) {
         return res.status(400).json({
-            message: "Cannot get bill",
+            message: "Get list bill failed",
             status: "Failed",
-            error: "Missing month or year",
+            error: "Cannot get list bill",
             count: 0,
-            bills: [],
+            list_bill_amount: [],
         });
     }
 
-    const month = parseInt(req.query.month);
-    const year = parseInt(req.query.year);
+    const month = parseInt(normalize.normalizeInt(req.query.month));
+    const year = parseInt(normalize.normalizeInt(req.query.year));
 
     // Lấy ngày đầu tiên và cuối cùng của tháng
     const firstDayOfMonth = new Date(year, month - 1, 1);
     const lastDayOfMonth = new Date(year, month, 0);
 
-    const listbill = await Bill.aggregate([
+    const listBillAmount = await Bill.aggregate([
         {
             $match: {
                 timeCheckIn: {
@@ -194,9 +190,6 @@ exports.get_billamount_by_month = async (req, res, next) => {
             },
         },
         {
-            $unwind: "$billInfo",
-        },
-        {
             $group: {
                 _id: {
                     date: {
@@ -206,17 +199,49 @@ exports.get_billamount_by_month = async (req, res, next) => {
                         },
                     },
                 },
-                totalAmount: {
+                total_food_amount: {
                     $sum: {
-                        $add: [
+                        $multiply: [
                             {
-                                $multiply: [
-                                    "$billInfo.quantity",
-                                    "$billInfo.price",
+                                $ifNull: [ // bat loi neu bill khong co billinfo tham chieu toi
+                                    {
+                                        $arrayElemAt: ["$billInfo.quantity", 0],
+                                    },
+                                    0,
                                 ],
                             },
-                            "$tips",
+                            {
+                                $ifNull: [ // bat loi neu bill khong co billinfo tham chieu toi
+                                    {
+                                        $arrayElemAt: ["$billInfo.price", 0],
+                                    },
+                                    0,
+                                ],
+                            },
                         ],
+                    },
+                },
+
+                total_tips: {
+                    $sum: "$tips",
+                },
+
+                dathanhtoan: {
+                    $sum: {
+                        $cond: {
+                            if: { $eq: ["$status", 1] },
+                            then: 1,
+                            else: 0,
+                        },
+                    },
+                },
+                chuathanhtoan: {
+                    $sum: {
+                        $cond: {
+                            if: { $eq: ["$status", 0] },
+                            then: 1,
+                            else: 0,
+                        },
                     },
                 },
             },
@@ -225,18 +250,21 @@ exports.get_billamount_by_month = async (req, res, next) => {
             $project: {
                 _id: 0,
                 date: "$_id.date",
-                totalAmount: 1,
+                total_food_amount: 1,
+                total_tips: 1,
+                dathanhtoan: "$dathanhtoan",
+                chuathanhtoan: "$chuathanhtoan",
             },
         },
     ]);
 
-    if (listbill) {
+    if (listBillAmount) {
         res.status(200).json({
             message: "Get list bill successfully",
             status: "Success",
             error: "",
-            count: listbill.length,
-            billamounts: listbill,
+            count: listBillAmount.length,
+            list_bill_amount: listBillAmount,
         });
     } else {
         res.status(500).json({
@@ -244,7 +272,7 @@ exports.get_billamount_by_month = async (req, res, next) => {
             status: "Failed",
             error: "Cannot get list bill",
             count: 0,
-            billamounts: [],
+            list_bill_amount: [],
         });
     }
 };
