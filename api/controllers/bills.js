@@ -203,7 +203,8 @@ exports.get_billamount_by_month = async (req, res, next) => {
                     $sum: {
                         $multiply: [
                             {
-                                $ifNull: [ // bat loi neu bill khong co billinfo tham chieu toi
+                                $ifNull: [
+                                    // bat loi neu bill khong co billinfo tham chieu toi
                                     {
                                         $arrayElemAt: ["$billInfo.quantity", 0],
                                     },
@@ -211,7 +212,8 @@ exports.get_billamount_by_month = async (req, res, next) => {
                                 ],
                             },
                             {
-                                $ifNull: [ // bat loi neu bill khong co billinfo tham chieu toi
+                                $ifNull: [
+                                    // bat loi neu bill khong co billinfo tham chieu toi
                                     {
                                         $arrayElemAt: ["$billInfo.price", 0],
                                     },
@@ -278,7 +280,9 @@ exports.get_billamount_by_month = async (req, res, next) => {
 };
 
 exports.create_bill = async (req, res, next) => {
-    if (!req.body.timeCheckIn || !req.body.table || !req.body.seller) {
+    const { timeCheckIn, note, table, seller, billInfos } = req.body;
+
+    if (!timeCheckIn || !table || !seller) {
         return res.status(500).json({
             message: "Missing timeCheckIn or table or seller",
             status: "Failed",
@@ -341,31 +345,63 @@ exports.create_bill = async (req, res, next) => {
                     bill: {},
                 });
             } else {
-                res.status(201).json({
-                    message: "Create bill successfully",
-                    status: "Success",
-                    error: "",
-                    bill: {
-                        _id: result._id,
-                        timeCheckIn: result.timeCheckIn,
-                        timeCheckout: result.timeCheckout,
-                        note: result.note,
-                        tips: result.tips,
-                        status: result.status,
-                        table: {
-                            _id: result.table._id,
-                            tablename: result.table.tablename,
-                            status: result.table.status,
-                            note: result.table.note,
-                        },
-                        seller: {
-                            _id: result.seller._id,
-                            username: result.seller.username,
-                            first_name: result.seller.first_name,
-                            last_name: result.seller.last_name,
-                        },
-                    },
+                // luu billinfo vao database
+                // Create an array to store the BillInfo objects
+                const billInfoObjects = [];
+
+                // Iterate through the billInfos array and create BillInfo objects
+                billInfos.forEach((billInfoData) => {
+                    const billInfo = new BillInfo({
+                        _id: new mongoose.Types.ObjectId(),
+                        bill: bill._id,
+                        food: billInfoData.food,
+                        quantity: billInfoData.quantity,
+                        price: billInfoData.price,
+                    });
+
+                    billInfoObjects.push(billInfo);
                 });
+
+                // Save the list of BillInfo objects to the database
+                BillInfo.insertMany(billInfoObjects)
+                    .then((savedBillInfos) => {
+                        // Handle success, if needed
+                        res.status(201).json({
+                            message: "Create bill successfully",
+                            status: "Success",
+                            error: "",
+                            bill: {
+                                _id: result._id,
+                                timeCheckIn: result.timeCheckIn,
+                                timeCheckout: result.timeCheckout,
+                                note: result.note,
+                                tips: result.tips,
+                                status: result.status,
+                                table: {
+                                    _id: result.table._id,
+                                    tablename: result.table.tablename,
+                                    status: result.table.status,
+                                    note: result.table.note,
+                                },
+                                seller: {
+                                    _id: result.seller._id,
+                                    username: result.seller.username,
+                                    first_name: result.seller.first_name,
+                                    last_name: result.seller.last_name,
+                                },
+                                billInfos: billInfoObjects,
+                            },
+                        });
+                    })
+                    .catch((error) => {
+                        // Handle failure
+                        res.status(500).json({
+                            message: "Create bill failed",
+                            status: "Failed",
+                            error: error.message,
+                            bill: {},
+                        });
+                    });
             }
         }
     } catch (err) {

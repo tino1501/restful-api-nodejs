@@ -77,6 +77,7 @@ exports.get_table = async (req, res, next) => {
                     tablename: table.tablename,
                     note: table.note,
                     status: table.status,
+                    bill: table.bill,
                 },
             });
         }
@@ -139,6 +140,7 @@ exports.create_table = async (req, res, next) => {
                         tablename: result.tablename,
                         note: result.note,
                         status: result.status,
+                        bill: result.bill,
                     },
                 });
             }

@@ -20,6 +20,11 @@ const billInfoSchema = mongoose.Schema({
         type: Number,
         required: true,
     },
+    note: {
+        type: String,
+        required: false,
+        default: "",
+    },
 });
 
 module.exports = mongoose.model("BillInfo", billInfoSchema);

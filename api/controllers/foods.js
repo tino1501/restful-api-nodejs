@@ -287,6 +287,8 @@ exports.create_food = async (req, res, next) => {
 
 exports.update_food = async (req, res, next) => {
     const updateOps = {};
+    console.log(req.body);
+    console.log(req.file);
 
     if (!req.params._id) {
         return res.status(400).json({
@@ -321,7 +323,7 @@ exports.update_food = async (req, res, next) => {
 
     // change img if get new img
     if (req.file) {
-        updateOps.imgUrl = process.env.IP_ADRESS + req.file.path;
+        updateOps.imgUrl = req.file.path;
     }
 
     const id = req.params._id;
