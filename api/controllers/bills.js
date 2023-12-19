@@ -9,7 +9,9 @@ const BillInfo = require("../models/billinfo");
 exports.get_all = async (req, res, next) => {
     try {
         const bills = await Bill.find()
-            .select("_id timeCheckIn timeCheckout note tips status table seller")
+            .select(
+                "_id timeCheckIn timeCheckout note tips status table seller"
+            )
             .populate("seller", "_id username first_name last_name")
             .populate("table", "_id tablename status note")
             .exec();
@@ -31,7 +33,9 @@ exports.get_all = async (req, res, next) => {
                 bills: await Promise.all(
                     bills.map(async (bill) => {
                         // Include billinfos for each bill
-                        const billinfos = await BillInfo.find({ bill: bill._id })
+                        const billinfos = await BillInfo.find({
+                            bill: bill._id,
+                        })
                             .select("bill food quantity price")
                             .exec();
 
@@ -291,9 +295,10 @@ exports.get_billamount_by_month = async (req, res, next) => {
 };
 
 exports.create_bill = async (req, res, next) => {
-    const { timeCheckIn, note, table, seller, billInfos } = req.body;
+    const { timeCheckIn, note, table, seller } = req.body;
 
     if (!timeCheckIn || !table || !seller) {
+        console.log("Missing timeCheckIn or table or seller");
         return res.status(500).json({
             message: "Missing timeCheckIn or table or seller",
             status: "Failed",
@@ -303,39 +308,40 @@ exports.create_bill = async (req, res, next) => {
     }
 
     try {
-        let table = await Table.findById(req.body.table);
+        let tableObj = await Table.findById(req.body.table);
 
-        // kiem tra table co ton tai hay khong
-        if (!table) {
+        // Kiểm tra xem bàn có tồn tại hay không
+        if (!tableObj) {
             return res.status(404).json({
                 message: "Cannot create bill",
                 status: "Failed",
                 error: "Table not found",
                 bill: {},
             });
-        } else if (table.status === 1) {
-            // kiem tra table co dang duoc su dung hay khong
+        } else if (tableObj.status === 1) {
+            // Kiểm tra xem bàn có đang được sử dụng hay không
             return res.status(404).json({
                 message: "Cannot create bill",
                 status: "Failed",
-                error: "Table is using",
+                error: "Table is in use",
                 bill: {},
             });
         }
-
+        console.log("da tao bill");
         const bill = new Bill({
             _id: new mongoose.Types.ObjectId(),
             timeCheckIn: req.body.timeCheckIn,
-            note: req.body.note,
             table: req.body.table,
             seller: req.body.seller,
         });
 
-        const result = await bill.save(); // luu bill vao database
+        const result = await bill.save();
 
         if (!result) {
-            table.status = 0;
-            await table.save();
+            console.log("khong the luu bill");
+            // Nếu không thể tạo bill, cập nhật trạng thái bàn và trả về lỗi
+            tableObj.status = 0;
+            await tableObj.save();
 
             res.status(500).json({
                 message: "Create bill failed",
@@ -344,79 +350,49 @@ exports.create_bill = async (req, res, next) => {
                 bill: {},
             });
         } else {
-            // cap nhat trang thai table
-            table.status = 1;
-            table.bill = result._id;
-            const updatestatus = await table.save();
+            console.log("da luu bill thanh cong");
+            // Nếu tạo bill thành công, cập nhật trạng thái bàn và không thêm BillInfo
+            tableObj.status = 1;
+            tableObj.bill = result._id;
+            const updateStatus = await tableObj.save();
 
-            if (!updatestatus) {
+            if (!updateStatus) {
                 return res.status(404).json({
-                    message: "Cannot update state table after create bill",
+                    message: "Cannot update state table after creating bill",
                     status: "Failed",
-                    error: "Khong the cap nhat trang thai ban sau khi tao bill",
+                    error: "Cannot update state table after creating bill",
                     bill: {},
                 });
             } else {
-                // luu billinfo vao database
-                // Create an array to store the BillInfo objects
-                const billInfoObjects = [];
-
-                // Iterate through the billInfos array and create BillInfo objects
-                billInfos.forEach((billInfoData) => {
-                    const billInfo = new BillInfo({
-                        _id: new mongoose.Types.ObjectId(),
-                        bill: bill._id,
-                        food: billInfoData.food,
-                        quantity: billInfoData.quantity,
-                        price: billInfoData.price,
-                    });
-
-                    billInfoObjects.push(billInfo);
+                console.log(result);
+                res.status(201).json({
+                    message: "Create bill successfully",
+                    status: "Success",
+                    error: "",
+                    bill: {
+                        _id: result._id,
+                        timeCheckIn: result.timeCheckIn,
+                        note: result.note,
+                        status: result.status,
+                        table: {
+                            _id: result.table._id,
+                            tablename: result.table.tablename,
+                            status: result.table.status,
+                            note: result.table.note,
+                        },
+                        seller: {
+                            _id: result.seller._id,
+                            username: result.seller.username,
+                            first_name: result.seller.first_name,
+                            last_name: result.seller.last_name,
+                        },
+                        billinfos: [],
+                    },
                 });
-
-                // Save the list of BillInfo objects to the database
-                BillInfo.insertMany(billInfoObjects)
-                    .then((savedBillInfos) => {
-                        // Handle success, if needed
-                        res.status(201).json({
-                            message: "Create bill successfully",
-                            status: "Success",
-                            error: "",
-                            bill: {
-                                _id: result._id,
-                                timeCheckIn: result.timeCheckIn,
-                                timeCheckout: result.timeCheckout,
-                                note: result.note,
-                                tips: result.tips,
-                                status: result.status,
-                                table: {
-                                    _id: result.table._id,
-                                    tablename: result.table.tablename,
-                                    status: result.table.status,
-                                    note: result.table.note,
-                                },
-                                seller: {
-                                    _id: result.seller._id,
-                                    username: result.seller.username,
-                                    first_name: result.seller.first_name,
-                                    last_name: result.seller.last_name,
-                                },
-                                billInfos: billInfoObjects,
-                            },
-                        });
-                    })
-                    .catch((error) => {
-                        // Handle failure
-                        res.status(500).json({
-                            message: "Create bill failed",
-                            status: "Failed",
-                            error: error.message,
-                            bill: {},
-                        });
-                    });
             }
         }
     } catch (err) {
+        // Xử lý lỗi chung
         res.status(500).json({
             message: "Create bill failed",
             status: "Failed",
@@ -428,39 +404,73 @@ exports.create_bill = async (req, res, next) => {
 
 exports.update_bill = async (req, res, next) => {
     const id = req.params.billId;
-    // const updateOps = {};
 
+    const {
+        timeCheckIn,
+        timeCheckout,
+        note,
+        tips,
+        table,
+        seller,
+        billinfos,
+    } = req.body;
 
-    // for (const ops in req.body) {
-    //     if (
-    //         ops !== "timeCheckout" &&
-    //         ops !== "note" &&
-    //         ops !== "tips" &&
-    //         ops !== "table"
-    //     ) {
-    //         return res.status(400).json({
-    //             message: "Update failed",
-    //             status: "Failed",
-    //             error: `Can not use ${ops} to update bill`,
-    //             bill: {},
-    //         });
-    //     } else {
-    //         updateOps[ops] = req.body[ops];
-    //     }
-    //     // console.log(ops);
+    // // Kiểm tra tính hợp lệ của các trường đầu vào
+    // if (!timeCheckIn || !status || !table || !seller || !billinfos) {
+    //     res.status(400).json({
+    //         message: "Update failed",
+    //         status: "Failed",
+    //         error: "Invalid input data",
+    //         bill: {},
+    //     });
+    //     return;
     // }
 
-    const {timeCheckIn, timeCheckout, note, tips, status, table, seller, billinfos} = req.body;
-
-
+    if (!timeCheckIn) {
+        console.log("Missing timeCheckIn");
+        res.status(400).json({
+            message: "Update failed",
+            status: "Failed",
+            error: "Invalid input data",
+            bill: {},
+        });
+        return;
+    } else if (!table) {
+        console.log("Missing table");
+        res.status(400).json({
+            message: "Update failed",
+            status: "Failed",
+            error: "Invalid input data",
+            bill: {},
+        });
+        return;
+    } else if (!seller) {
+        console.log("Missing seller");
+        res.status(400).json({
+            message: "Update failed",
+            status: "Failed",
+            error: "Invalid input data",
+            bill: {},
+        });
+        return;
+    } else if (!billinfos) {
+        console.log("Missing billinfos");
+        res.status(400).json({
+            message: "Update failed",
+            status: "Failed",
+            error: "Invalid input data",
+            bill: {},
+        });
+        return;
+    }
 
     const updateOps = {
         timeCheckIn: timeCheckIn,
         timeCheckout: timeCheckout,
         note: note,
         tips: tips,
-        status: status,
         table: table,
+        status:1,
         seller: seller,
     };
 
@@ -475,57 +485,96 @@ exports.update_bill = async (req, res, next) => {
         ).exec();
 
         if (!result) {
-            res.status(404).json({
+            console.log("Bill not found");
+            return res.status(404).json({
                 message: "Bill not found",
                 status: "Failed",
                 error: "Cannot find bill",
                 bill: {},
             });
-        } else {
-            try {
-                for (const billInfoData of billinfos) {
-                  const { bill, food, quantity, price } = billInfoData;
-            
-                  // Kiểm tra xem có BillInfo nào đã tồn tại chưa
-                  let existingBillInfo = await BillInfo.findOne({ bill: bill, food: food });
-            
-                  if (existingBillInfo) {
-                    // Nếu đã tồn tại, cập nhật thông tin
-                    existingBillInfo.quantity = quantity;
-                    existingBillInfo.price = price;
-                    // Bạn có thể thêm xử lý cho trường note nếu cần
-                    await existingBillInfo.save();
-                  } else {
-                    // Nếu chưa tồn tại, thêm mới
-                    const newBillInfo = new BillInfo({
-                      bill: bill,
-                      food: food,
-                      quantity: quantity,
-                      price: price,
-                      // Bạn có thể thêm xử lý cho trường note nếu cần
+        }
+
+        // Cập nhật thông tin bàn
+        try {
+            const updatedTable = await Table.findOneAndUpdate(
+                { _id: table._id },
+                { $set: { status: 0, bill: null } },
+                { new: true }
+            ).exec();
+
+            if (!updatedTable) {
+                return res.status(404).json({
+                    message: "Table not found",
+                    status: "Failed",
+                    error: "Cannot find table",
+                    bill: {},
+                });
+            } else {
+                // Cập nhật hoặc thêm mới BillInfo
+                try {
+                    for (const billInfoData of billinfos) {
+                        const { bill, food, quantity, price } = billInfoData;
+
+                        // Kiểm tra xem có BillInfo nào đã tồn tại chưa
+                        let existingBillInfo = await BillInfo.findOne({
+                            bill: bill,
+                            food: food,
+                        });
+
+                        if (existingBillInfo) {
+                            // Nếu đã tồn tại, cập nhật thông tin
+                            existingBillInfo.quantity = quantity;
+                            existingBillInfo.price = price;
+                            // Bạn có thể thêm xử lý cho trường note nếu cần
+                            await existingBillInfo.save();
+                        } else {
+                            // Nếu chưa tồn tại, thêm mới
+                            const newBillInfo = new BillInfo({
+                                _id: new mongoose.Types.ObjectId(),
+                                bill: bill,
+                                food: food,
+                                quantity: quantity,
+                                price: price,
+                                // Bạn có thể thêm xử lý cho trường note nếu cần
+                            });
+                            await newBillInfo.save();
+                        }
+                    }
+
+                    console.log("BillInfos added or updated successfully");
+                } catch (error) {
+                    console.error("Error adding or updating BillInfos:", error);
+                    return res.status(500).json({
+                        message: "Update bill failed",
+                        status: "Failed",
+                        error: "Error adding or updating BillInfos",
+                        bill: {},
                     });
-                    await newBillInfo.save();
-                  }
                 }
-            
-                console.log("BillInfos added or updated successfully");
-              } catch (error) {
-                console.error("Error adding or updating BillInfos:", error);
-              }
+            }
 
-
-            res.status(200).json({
+            // Trả về kết quả sau khi đã cập nhật tất cả thông tin
+            return res.status(200).json({
                 message: "Update bill successfully",
                 status: "Success",
                 error: "",
-                bill: result,
+                bill: {},
+            });
+        } catch (err) {
+            console.error("Error updating Table:", err);
+            return res.status(500).json({
+                message: "Update bill failed",
+                status: "Failed",
+                error: "Error updating Table",
+                bill: {},
             });
         }
     } catch (err) {
-        res.status(500).json({
+        console.error("Error updating Bill:", err);
+        return res.status(500).json({
             message: "Update bill failed",
             status: "Failed",
-            error: err.message,
+            error: "Error updating Bill",
             bill: {},
         });
     }
