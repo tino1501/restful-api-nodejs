@@ -9,13 +9,10 @@ const BillInfo = require("../models/billinfo");
 exports.get_all = async (req, res, next) => {
     try {
         const bills = await Bill.find()
-            .select(
-                "_id timeCheckIn timeCheckout note tips status table seller"
-            )
+            .select("_id timeCheckIn timeCheckout note tips status table seller")
             .populate("seller", "_id username first_name last_name")
             .populate("table", "_id tablename status note")
             .exec();
-        // res.status(200).json(bills);
 
         if (!bills) {
             res.status(500).json({
@@ -31,18 +28,26 @@ exports.get_all = async (req, res, next) => {
                 status: "Success",
                 error: "",
                 count: bills.length,
-                bills: bills.map((bill) => {
-                    return {
-                        _id: bill._id,
-                        timeCheckIn: bill.timeCheckIn,
-                        timeCheckout: bill.timeCheckout,
-                        note: bill.note,
-                        tips: bill.tips,
-                        status: bill.status,
-                        table: bill.table,
-                        seller: bill.seller,
-                    };
-                }),
+                bills: await Promise.all(
+                    bills.map(async (bill) => {
+                        // Include billinfos for each bill
+                        const billinfos = await BillInfo.find({ bill: bill._id })
+                            .select("bill food quantity price")
+                            .exec();
+
+                        return {
+                            _id: bill._id,
+                            timeCheckIn: bill.timeCheckIn,
+                            timeCheckout: bill.timeCheckout,
+                            note: bill.note,
+                            tips: bill.tips,
+                            status: bill.status,
+                            table: bill.table,
+                            seller: bill.seller,
+                            billinfos: billinfos,
+                        };
+                    })
+                ),
             };
 
             res.status(200).json(response);
@@ -77,6 +82,11 @@ exports.get_bill = async (req, res, next) => {
                 bill: {},
             });
         } else {
+            // Lấy danh sách các billinfos cho bill
+            const billinfos = await BillInfo.find({ bill: bill._id })
+                .select("bill food quantity price")
+                .exec();
+
             res.status(200).json({
                 message: "Get bill successfully",
                 status: "Success",
@@ -90,6 +100,7 @@ exports.get_bill = async (req, res, next) => {
                     status: bill.status,
                     table: bill.table,
                     seller: bill.seller,
+                    billinfos: billinfos, // Danh sách billinfos đã được lấy
                 },
             });
         }
@@ -335,6 +346,7 @@ exports.create_bill = async (req, res, next) => {
         } else {
             // cap nhat trang thai table
             table.status = 1;
+            table.bill = result._id;
             const updatestatus = await table.save();
 
             if (!updatestatus) {

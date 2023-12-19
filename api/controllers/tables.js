@@ -6,34 +6,36 @@ const normalizeString = require("../middlewares/normalize-string");
 
 exports.get_all = async (req, res, next) => {
     try {
-        const tables = await Table.find().exec();
+        const tables = await Table.find()
+            .populate("bill", "_id") // Chỉ lấy trường _id của bill
+            .lean()
+            .exec();
 
-        if (!tables) {
-            res.status(500).json({
+        if (!tables || tables.length === 0) {
+            return res.status(500).json({
                 message: "Lấy danh sách bàn thất bại",
                 status: "Failed",
                 error: "Không thể lấy danh sách bàn ăn",
                 count: 0,
                 tables: [],
             });
-        } else {
-            const response = {
-                message: "Lấy danh sách bàn ăn thành công",
-                status: "Success",
-                error: "",
-                count: tables.length,
-                tables: tables.map((table) => {
-                    return {
-                        _id: table._id,
-                        tablename: table.tablename,
-                        note: table.note,
-                        status: table.status,
-                    };
-                }),
-            };
-
-            res.status(200).json(response);
         }
+
+        const response = {
+            message: "Lấy danh sách bàn ăn thành công",
+            status: "Success",
+            error: "",
+            count: tables.length,
+            tables: tables.map((table) => ({
+                _id: table._id,
+                tablename: table.tablename,
+                note: table.note,
+                status: table.status,
+                bill: table.bill ? table.bill._id : "", // Nếu bill là null thì trả về ""
+            })),
+        };
+
+        res.status(200).json(response);
     } catch (err) {
         res.status(500).json({
             message: "Lấy danh sách bàn thất bại",
