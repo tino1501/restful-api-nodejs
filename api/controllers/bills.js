@@ -428,26 +428,44 @@ exports.create_bill = async (req, res, next) => {
 
 exports.update_bill = async (req, res, next) => {
     const id = req.params.billId;
-    const updateOps = {};
+    // const updateOps = {};
 
-    for (const ops in req.body) {
-        if (
-            ops !== "timeCheckout" &&
-            ops !== "note" &&
-            ops !== "tips" &&
-            ops !== "table"
-        ) {
-            return res.status(400).json({
-                message: "Update failed",
-                status: "Failed",
-                error: `Can not use ${ops} to update bill`,
-                bill: {},
-            });
-        } else {
-            updateOps[ops] = req.body[ops];
-        }
-        // console.log(ops);
-    }
+
+    // for (const ops in req.body) {
+    //     if (
+    //         ops !== "timeCheckout" &&
+    //         ops !== "note" &&
+    //         ops !== "tips" &&
+    //         ops !== "table"
+    //     ) {
+    //         return res.status(400).json({
+    //             message: "Update failed",
+    //             status: "Failed",
+    //             error: `Can not use ${ops} to update bill`,
+    //             bill: {},
+    //         });
+    //     } else {
+    //         updateOps[ops] = req.body[ops];
+    //     }
+    //     // console.log(ops);
+    // }
+
+    const {timeCheckIn, timeCheckout, note, tips, status, table, seller, billinfos} = req.body;
+
+
+
+    const updateOps = {
+        timeCheckIn: timeCheckIn,
+        timeCheckout: timeCheckout,
+        note: note,
+        tips: tips,
+        status: status,
+        table: table,
+        seller: seller,
+    };
+
+    console.log(updateOps);
+    console.log(billinfos);
 
     try {
         const result = await Bill.findOneAndUpdate(
@@ -464,6 +482,38 @@ exports.update_bill = async (req, res, next) => {
                 bill: {},
             });
         } else {
+            try {
+                for (const billInfoData of billinfos) {
+                  const { bill, food, quantity, price } = billInfoData;
+            
+                  // Kiểm tra xem có BillInfo nào đã tồn tại chưa
+                  let existingBillInfo = await BillInfo.findOne({ bill: bill, food: food });
+            
+                  if (existingBillInfo) {
+                    // Nếu đã tồn tại, cập nhật thông tin
+                    existingBillInfo.quantity = quantity;
+                    existingBillInfo.price = price;
+                    // Bạn có thể thêm xử lý cho trường note nếu cần
+                    await existingBillInfo.save();
+                  } else {
+                    // Nếu chưa tồn tại, thêm mới
+                    const newBillInfo = new BillInfo({
+                      bill: bill,
+                      food: food,
+                      quantity: quantity,
+                      price: price,
+                      // Bạn có thể thêm xử lý cho trường note nếu cần
+                    });
+                    await newBillInfo.save();
+                  }
+                }
+            
+                console.log("BillInfos added or updated successfully");
+              } catch (error) {
+                console.error("Error adding or updating BillInfos:", error);
+              }
+
+
             res.status(200).json({
                 message: "Update bill successfully",
                 status: "Success",
