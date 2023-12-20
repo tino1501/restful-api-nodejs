@@ -5,6 +5,7 @@ const normalize = require("../middlewares/normalize-string");
 const Bill = require("../models/bill");
 const Table = require("../models/table");
 const BillInfo = require("../models/billinfo");
+const Food = require("../models/food");
 
 exports.get_all = async (req, res, next) => {
     try {
@@ -405,15 +406,8 @@ exports.create_bill = async (req, res, next) => {
 exports.update_bill = async (req, res, next) => {
     const id = req.params.billId;
 
-    const {
-        timeCheckIn,
-        timeCheckout,
-        note,
-        tips,
-        table,
-        seller,
-        billinfos,
-    } = req.body;
+    const { timeCheckIn, timeCheckout, note, tips, table, seller, billinfos } =
+        req.body;
 
     // // Kiểm tra tính hợp lệ của các trường đầu vào
     // if (!timeCheckIn || !status || !table || !seller || !billinfos) {
@@ -470,7 +464,7 @@ exports.update_bill = async (req, res, next) => {
         note: note,
         tips: tips,
         table: table,
-        status:1,
+        status: 1,
         seller: seller,
     };
 
@@ -527,6 +521,14 @@ exports.update_bill = async (req, res, next) => {
                             existingBillInfo.price = price;
                             // Bạn có thể thêm xử lý cho trường note nếu cần
                             await existingBillInfo.save();
+
+                            // Cập nhật số lượng món ăn
+                            const existingFood = await Food.findById(food);
+                            if (existingFood) {
+                                existingFood.soLuongTon +=
+                                    existingBillInfo.quantity - quantity;
+                                await existingFood.save();
+                            }
                         } else {
                             // Nếu chưa tồn tại, thêm mới
                             const newBillInfo = new BillInfo({
@@ -538,6 +540,13 @@ exports.update_bill = async (req, res, next) => {
                                 // Bạn có thể thêm xử lý cho trường note nếu cần
                             });
                             await newBillInfo.save();
+
+                            // Cập nhật số lượng món ăn
+                            const existingFood = await Food.findById(food);
+                            if (existingFood) {
+                                existingFood.soLuongTon -= quantity;
+                                await existingFood.save();
+                            }
                         }
                     }
 
