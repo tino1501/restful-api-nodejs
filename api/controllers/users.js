@@ -162,7 +162,7 @@ exports.user_signup = async (req, res, next) => {
 
 exports.user_signin = async (req, res, next) => {
     if (!req.body.username) {
-        return res.status(401).json({
+        return res.status(200).json({
             message: "Can not login",
             status: "Failed",
             error: "Missing username",
@@ -170,7 +170,7 @@ exports.user_signin = async (req, res, next) => {
             user: {},
         });
     } else if (!req.body.password) {
-        return res.status(401).json({
+        return res.status(200).json({
             message: "Can not login",
             status: "Failed",
             error: "Missing password",
@@ -185,7 +185,7 @@ exports.user_signin = async (req, res, next) => {
         }).exec();
 
         if (!user) {
-            return res.status(401).json({
+            return res.status(200).json({
                 message: "Can not login",
                 status: "Failed",
                 error: "Cannot find user",
@@ -194,7 +194,7 @@ exports.user_signin = async (req, res, next) => {
             });
         }
         if (req.body.password !== user.password) {
-            return res.status(401).json({
+            return res.status(200).json({
                 message: "Can not login",
                 status: "Failed",
                 error: "Wrong password",
