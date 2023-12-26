@@ -82,11 +82,11 @@ exports.get_billInfo = async (req, res, next) => {
 };
 
 exports.create_billInfo = async (req, res, next) => {
-    if (
-        !req.body.billId ||
-        !req.body.foodId ||
-        !req.body.quantity
-    ) {
+    console.log(req.body);
+
+    const { bill, food, quantity } = req.body;
+
+    if (!bill || !food || !quantity) {
         return res.status(404).json({
             message: "Cannot create billinfo",
             status: "Failed",
@@ -97,24 +97,22 @@ exports.create_billInfo = async (req, res, next) => {
 
     try {
         const existBillInfo = await BillInfo.findOne({
-            bill: req.body.billId,
-            food: req.body.foodId,
+            bill: bill,
+            food: food,
         }).exec();
 
         if (existBillInfo) {
             return res.status(409).json({
                 message: "Cannot create billinfo",
                 status: "Failed",
-                error: "billinfo already exist",
+                error: "billinfo already exists",
                 billInfo: {},
             });
         }
 
-        // khong ton tai billinfo voi billId va foodId => tao moi billinfo
+        const foundBill = await Bill.findById(bill).exec();
 
-        const bill = await Bill.findById(req.body.billId).exec();
-
-        if (!bill) {
+        if (!foundBill) {
             return res.status(404).json({
                 message: "Cannot create billinfo",
                 status: "Failed",
@@ -123,9 +121,9 @@ exports.create_billInfo = async (req, res, next) => {
             });
         }
 
-        const food = await Food.findById(req.body.foodId).exec();
+        const foundFood = await Food.findById(food).exec();
 
-        if (!food) {
+        if (!foundFood) {
             return res.status(404).json({
                 message: "Cannot create billinfo",
                 status: "Failed",
@@ -136,12 +134,13 @@ exports.create_billInfo = async (req, res, next) => {
 
         const billInfo = new BillInfo({
             _id: new mongoose.Types.ObjectId(),
-            bill: req.body.billId,
-            food: req.body.foodId,
-            quantity: req.body.quantity,
-            price: food.price,
+            bill: bill,
+            food: food,
+            quantity: quantity,
+            price: foundFood.price,
         });
 
+        // Save the new billInfo
         const result = await billInfo.save();
 
         if (!result) {
@@ -151,20 +150,37 @@ exports.create_billInfo = async (req, res, next) => {
                 error: "Something went wrong",
                 billInfo: {},
             });
-        } else {
-            res.status(201).json({
-                message: "Create billinfo successfully",
-                status: "Success",
-                error: "",
-                billInfo: {
-                    _id: result._id,
-                    bill: result.bill,
-                    food: result.food,
-                    quantity: result.quantity,
-                    price: result.price,
-                },
+        }
+
+        // Update the food quantity
+        foundFood.soLuongTon -= quantity;
+
+        // Save the updated food
+        const updatedFood = await foundFood.save();
+
+        if (!updatedFood) {
+            // Handle error if failed to update food quantity
+            return res.status(500).json({
+                message: "Cannot create billinfo",
+                status: "Failed",
+                error: "Failed to update food quantity",
+                billInfo: {},
             });
         }
+
+        // Send the response if everything is successful
+        res.status(201).json({
+            message: "Create billinfo successfully",
+            status: "Success",
+            error: "",
+            billInfo: {
+                _id: result._id,
+                bill: result.bill,
+                food: result.food,
+                quantity: result.quantity,
+                price: result.price,
+            },
+        });
     } catch (err) {
         res.status(500).json({
             message: "Something went wrong",
@@ -176,45 +192,81 @@ exports.create_billInfo = async (req, res, next) => {
 };
 
 exports.update_billInfo = async (req, res, next) => {
-    console.log(req.body.quantity);
-    console.log(req.params.billInfoId);
-    if (!req.params.billInfoId || !req.body.quantity) {
+    const { quantity, food } = req.body;
+    const billInfoId = req.params.billInfoId;
+
+    if (!billInfoId || !quantity || !food) {
         return res.status(404).json({
             message: "Cannot update billinfo",
             status: "Failed",
-            error: "missing billInfoId or quantity",
+            error: "missing billInfoId, quantity, or food",
             billInfo: {},
         });
     }
 
     try {
-        const billinfo = await BillInfo.findOneAndUpdate(
-            { _id: req.params.billInfoId },
-            { quantity: req.body.quantity },
+        const existingFood = await Food.findById(food).exec();
+
+        if (!existingFood) {
+            return res.status(404).json({
+                message: "Cannot update billinfo",
+                status: "Failed",
+                error: "food not found",
+                billInfo: {},
+            });
+        }
+
+        if (quantity === 1) {
+            // Kiểm tra nếu cần thêm món ăn và số lượng tồn kho là 0
+            if (existingFood.soLuongTon === 0) {
+                return res.status(404).json({
+                    message: "Cannot update billinfo",
+                    status: "Failed",
+                    error: "không đủ món ăn",
+                    billInfo: {},
+                });
+            }
+        }
+
+        existingFood.soLuongTon += -quantity;
+        const updatedFood = await existingFood.save();
+
+        if (!updatedFood) {
+            return res.status(500).json({
+                message: "Cannot update billinfo",
+                status: "Failed",
+                error: "Something went wrong while updating food quantity",
+                billInfo: {},
+            });
+        }
+
+        const updatedBillInfo = await BillInfo.findByIdAndUpdate(
+            billInfoId,
+            { $inc: { quantity: quantity } },
             { new: true }
         ).exec();
 
-        if (!billinfo) {
-            res.status(404).json({
+        if (!updatedBillInfo) {
+            return res.status(404).json({
                 message: "Cannot update billinfo",
                 status: "Failed",
                 error: "billinfo not found",
                 billInfo: {},
             });
-        } else {
-            res.status(200).json({
-                message: "Update billinfo successfully",
-                status: "Success",
-                error: "",
-                billInfo: {
-                    _id: billinfo._id,
-                    bill: billinfo.bill,
-                    food: billinfo.food,
-                    quantity: billinfo.quantity,
-                    price: billinfo.price,
-                },
-            });
         }
+
+        res.status(200).json({
+            message: "Update billinfo successfully",
+            status: "Success",
+            error: "",
+            billInfo: {
+                _id: updatedBillInfo._id,
+                bill: updatedBillInfo.bill,
+                food: updatedBillInfo.food,
+                quantity: updatedBillInfo.quantity,
+                price: updatedBillInfo.price,
+            },
+        });
     } catch (err) {
         res.status(500).json({
             message: "Something went wrong",
