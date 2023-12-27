@@ -12,6 +12,8 @@ router.post("/", TableController.create_table);
 
 router.patch("/:_id", TableController.update_table);
 
+router.put("/chuyenban", TableController.chuyenban);
+
 router.delete("/:_id", checkAuth, TableController.delete_table);
 
 module.exports = router;

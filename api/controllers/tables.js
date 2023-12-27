@@ -262,3 +262,67 @@ exports.update_table = async (req, res, next) => {
         });
     }
 };
+
+exports.chuyenban = async (req, res, next) => {
+    const { currTable, targetTable } = req.body;
+
+    console.log(req.body);
+    console.log("req.body");
+    console.log(currTable);
+    console.log(targetTable);
+
+    if (!currTable || !targetTable) {
+        return res.status(400).json({
+            message: "Thiếu thông tin",
+            status: "Failed",
+            error: "Thiếu id bàn ăn",
+            table: {},
+        });
+    }
+
+    const table1 = await Table.findById(currTable._id).exec();
+    const table2 = await Table.findById(targetTable._id).exec();
+
+    if (!table1 || !table2) {
+        return res.status(404).json({
+            message: "Không thể chuyển bàn",
+            status: "Failed",
+            error: "Không tìm thấy bàn",
+            table: {},
+        });
+    }
+
+    try {
+        table1.status = 0;
+        table1.bill = null;
+
+        table2.status = 1;
+        table2.bill = currTable.bill;
+
+        const result1 = await table1.save();
+        const result2 = await table2.save();
+
+        if (result1 && result2) {
+            res.status(200).json({
+                message: "Chuyển bàn thành công",
+                status: "Success",
+                error: "",
+                table: {},
+            });
+        } else {
+            res.status(500).json({
+                message: "Chuyển bàn thất bại",
+                status: "Failed",
+                error: "Không thể lưu thông tin bàn",
+                table: {},
+            });
+        }
+    } catch (err) {
+        res.status(500).json({
+            message: "Chuyển bàn thất bại",
+            status: "Failed",
+            error: err.message,
+            table: {},
+        });
+    }
+};
